@@ -77,7 +77,7 @@ class QueryModel
 		$this->attributes['curl'] = \curl_init();
 		curl_setopt_array($this->curl, [
 			CURLOPT_AUTOREFERER => true,
-			CURLOPT_USERAGENT => 'Amoapi v.'.$instance::VERSION.' ('.$instance->getAuth('domain').'/'.$instance->getAuth('zone').')',
+			CURLOPT_USERAGENT => 'Amoapi v.'.$instance::VERSION.' ('.$instance->getAuth('lang').'/'.$instance->getAuth('zone').')',
 			CURLOPT_SSL_VERIFYHOST => 0,
 			CURLOPT_SSL_VERIFYPEER => false,
 			CURLOPT_RETURNTRANSFER => true,
@@ -206,6 +206,15 @@ class QueryModel
         }
 		return $headers;
 	}
+	
+    /**
+     * Get retries
+     * @return integer
+     */
+    public function getRetries()
+    {
+		return $this->retries;
+	}
 
     /**
      * Get url link
@@ -315,9 +324,19 @@ class QueryModel
      */
     public function clearCache()
     {
-		if (file_exists($this->cache_path.'/'.$this->hash.'.cache')) {
-			@unlink($this->cache_path.'/'.$this->hash.'.cache');
+		if (file_exists($this->cache_path.'/'.$this->hash.'.Amoapi.cache')) {
+			@unlink($this->cache_path.'/'.$this->hash.'.Amoapi.cache');
 		}
+	}
+
+    /**
+     * Clear Model data
+     * @return array
+     */
+    public function clear()
+    {
+		$this->attributes['curl'] = null;
+		$this->attributes['response'] = null;
 	}
 
     /**

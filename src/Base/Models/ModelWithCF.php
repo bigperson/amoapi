@@ -26,13 +26,16 @@ class ModelWithCF extends ApiModel
     protected function _boot($data = [])
     {
 		$this->attributes['customFields'] = null;
-		$this->attributes['custom_fields'] = [];
+		$this->attributes['custom_fields'] = null;
+		$cfs = [];
 		
 		if (isset($data->custom_fields)) {
 			foreach($data->custom_fields as $cf) {
-				$this->attributes['custom_fields'][$cf->id] = $cf;
+				$cfs[$cf->id] = $cf;
 			}
+			$this->attributes['custom_fields'] = gzencode(serialize($cfs), 5);
 		}
+		$data = null;
 	}
 	
     /**
@@ -59,22 +62,40 @@ class ModelWithCF extends ApiModel
 
 			$model_cfields = new Collection([]);
 			$account_cfields = $this->service->account->customFields->{static::$cf_category};
-	
+			$curr_custom_fields = $this->custom_fields;
+			
 			foreach ($account_cfields->all() as $cfield) {
 				$cf_data = [
 					'id' => $cfield->id,
 					'account_id' => $this->service->account->id,
 					'name' => $cfield->name,
-					'code' => isset($this->attributes['custom_fields'][$cfield->id]->code) ? $this->attributes['custom_fields'][$cfield->id]->code : null,
-					'values' => isset($this->attributes['custom_fields'][$cfield->id]) ? $this->attributes['custom_fields'][$cfield->id]->values : [],
+					'code' => isset($curr_custom_fields[$cfield->id]->code) ? $curr_custom_fields[$cfield->id]->code : null,
+					'values' => isset($curr_custom_fields[$cfield->id]) ? $curr_custom_fields[$cfield->id]->values : [],
 					'field' => $cfield
 				];
 				$cf_class = $account_cfields->getClassFrom($cfield);
 				$model_cfields->push(new $cf_class($cf_data));
 			}
 			$this->attributes['customFields'] = new EntityCustomFields($model_cfields);
+			$account_cfields = null;
 		}
 		return $this->attributes['customFields'];
+	}
+	
+    /**
+     * Protect custom_fields access
+	 * @param mixed $custom_fields attribute
+	 * @return array
+     */
+    protected function custom_fields_access($custom_fields)
+    {
+		if ($this->attributes['custom_fields'] && is_string($this->attributes['custom_fields'])) {
+			$this->attributes['custom_fields'] = unserialize(gzdecode($this->attributes['custom_fields']));
+		}
+		if (!is_array($this->attributes['custom_fields'])) {
+			$this->attributes['custom_fields'] = [];
+		}
+		return $this->attributes['custom_fields'];
 	}
 
     /**
@@ -119,6 +140,7 @@ class ModelWithCF extends ApiModel
      */
     public function refreshCustomFieldChanges()
 	{
+		$this->custom_fields;
 		if (!is_null($this->attributes['customFields']) && $cf_raws = $this->customFields->getChangedApiRaw()) {
 			foreach ($cf_raws as $cf_raw) {
 				$this->attributes['custom_fields'][$cf_raw['id']] = (object)$this->customFields->byId($cf_raw['id'])->getRaw();

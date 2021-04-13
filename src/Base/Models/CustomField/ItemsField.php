@@ -1,10 +1,10 @@
 <?php
 /**
- * amoCRM Entity custom field type - 2
+ * amoCRM Entity custom field type - 16
  */
 namespace Ufee\Amo\Base\Models\CustomField;
 
-class NumericField extends EntityField
+class ItemsField extends EntityField
 {
     /**
      * Get cf value
@@ -12,10 +12,10 @@ class NumericField extends EntityField
      */
     public function getValue()
     {
-		if (!isset($this->values[0])) {
+		if (!isset($this->values[0]) || !isset($this->values[0][0])) {
 			return null;
 		}
-		return $this->values[0]->value;
+		return $this->values[0][0];
 	}
 
     /**
@@ -26,7 +26,9 @@ class NumericField extends EntityField
     {
         $values = [];
 		foreach ($this->values as $setted) {
-            $values[]= $setted->value;
+			foreach ($setted as $val) {
+				$values[]= $val;
+			}
         }
         return $values;
     }

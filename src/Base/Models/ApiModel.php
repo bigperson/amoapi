@@ -188,13 +188,20 @@ class ApiModel extends Model
 			$this->updated_at = $date->getTimestamp();
 		}
 		if ($this->hasAttribute('custom_fields')) {
-			$this->setChanged('custom_fields');
+			$this->custom_fields;
+			$this->customFields->each(function(&$cfield) {
+				$cfield->setChanged('values');
+			});
 		}
 		foreach ($this->writable as $i=>$field) {
 			$this->setChanged($field);
 		}
 		if ($this->hasAttribute('tags')) {
 			$this->setChanged('tags');
+		}
+		if ($this->hasAttribute('loss_reason_id') && $this->hasAttribute('loss_reason_name')) {
+			$this->loss_reason_id = null;
+			$this->loss_reason_name = null;
 		}
 	}
 }

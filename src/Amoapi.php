@@ -1,101 +1,51 @@
 <?php
 /**
- * amoCRM API client
+ * amoCRM API client by api-hash
  * @author Vlad Ionov <vlad@f5.com.ru>
  * @version 0.8
  */
 namespace Ufee\Amo;
 
-if (!defined('AMOAPI_ROOT')) {
-	define('AMOAPI_ROOT', dirname(__FILE__));
-}
-if (!defined('CURL_SSLVERSION_TLSv1_2')) {
-	define('CURL_SSLVERSION_TLSv1_2', 6);
-}
-/**
- * @property \Ufee\Amo\Collections\QueryCollection $queries
- * @property \Ufee\Amo\Models\Account $account
- * @property \Ufee\Amo\Collections\LeadCollection $leads
- * @property \Ufee\Amo\Collections\ContactCollection $contacts
- * @property \Ufee\Amo\Collections\CompanyCollection $companies
- * @property \Ufee\Amo\Collections\TaskCollection $tasks
- * @property \Ufee\Amo\Collections\NoteCollection $notes
- * @property \Ufee\Amo\Collections\CustomerCollection $customers
- * @property \Ufee\Amo\Collections\TransactionsCollection $transactions
- * @property \Ufee\Amo\Collections\CatalogCollection $catalogs
- * @property \Ufee\Amo\Collections\CatalogElementCollection $catalogElements
- * @property \Ufee\Amo\Collections\WebhookCollection $webhooks
- * @method \Ufee\Amo\Services\Account account()
- * @method \Ufee\Amo\Services\Leads leads()
- * @method \Ufee\Amo\Services\Contacts contacts()
- * @method \Ufee\Amo\Services\Companies companies()
- * @method \Ufee\Amo\Services\Tasks tasks()
- * @method \Ufee\Amo\Services\Notes notes()
- * @method \Ufee\Amo\Services\Customers customers()
- * @method \Ufee\Amo\Services\Transactions transactions()
- * @method \Ufee\Amo\Services\Catalogs catalogs()
- * @method \Ufee\Amo\Services\CatalogElements catalogElements()
- * @method \Ufee\Amo\Services\Webhooks webhooks()
- * @method \Ufee\Amo\Services\Ajax ajax()
- */
-class Amoapi
+class Amoapi extends ApiClient
 {
 	const VERSION = 8;
 	const SESS_LIFETIME = 900;
 	const AUTH_URL = '/private/api/auth.php';
 
-	private static $_instances = [];
-	private static $_queries = [];
-
-	private $services = [
-		'account',
-		'leads',
-		'contacts',
-		'companies',
-		'tasks',
-		'notes',
-		'customers',
-		'transactions',
-		'catalogs',
-		'catalogElements',
-		'webhooks',
-		'ajax'
-	];
-	private $_account;
 	private $auto_auth = false;
 	private $session = [
 		'id' => null,
 		'modified_at' => 0
 	];
 	
-    /**
-     * Constructor
+	/**
+	 * Constructor
 	 * @param array $account
-     */
-    private function __construct(Array $account)
-    {
+	 */
+	private function __construct(Array $account)
+	{
 		$this->_account = $account;
-    }
+	}
 	
-    /**
-     * Get account auth data
+	/**
+	 * Get account auth data
 	 * @param string|null $key
 	 * @return array
-     */
-    public function getAuth($key = null)
-    {
+	 */
+	public function getAuth($key = null)
+	{
 		if (!is_null($key) && isset($this->_account[$key])) {
 			return $this->_account[$key];
 		}
 		return $this->_account;
 	}
 
-    /**
-     * Create auth session
+	/**
+	 * Create auth session
 	 * @return Amoapi
-     */
-    public function authorize()
-    {
+	 */
+	public function authorize()
+	{
 		$this->session['id'] = null;
 		$this->session['modified_at'] = 0;
 		$query = new Api\Query($this);
@@ -111,6 +61,9 @@ class Amoapi
 		if (!$data = $query->response->parseJson()) {
 			throw new \Exception('Auth failed with invalid response data: '.$query->response->getData(), $query->response->getCode());
 		}
+		if (!isset($data->response->auth)) {
+			throw new \Exception('Auth failed');
+		}
 		if (!$data->response->auth) {
 			if (isset($data->response->error_code) && isset($data->response->error)) {
 				throw new \Exception($data->response->error_code.': '.$data->response->error, $query->response->getCode());
@@ -123,57 +76,57 @@ class Amoapi
 		return $this;
 	}
 
-    /**
-     * Set auto authorize
+	/**
+	 * Set auto authorize
 	 * @param bool $value
 	 * @return bool
-     */
-    public function autoAuth($value = true)
-    {
-        return $this->auto_auth = (bool)$value;
+	 */
+	public function autoAuth($value = true)
+	{
+		return $this->auto_auth = (bool)$value;
 	}
 
-    /**
-     * Has auto authorize
+	/**
+	 * Has auto authorize
 	 * @return bool
-     */
-    public function hasAutoAuth()
-    {
-        return $this->auto_auth;
+	 */
+	public function hasAutoAuth()
+	{
+		return $this->auto_auth;
 	}
 
-    /**
-     * Set session
+	/**
+	 * Set session
 	 * @param string $id
 	 * @param integer $modified
 	 * @return Amoapi
-     */
-    public function setSession($id, $modified)
-    {
+	 */
+	public function setSession($id, $modified)
+	{
 		$this->session['id'] = $id;
 		$this->session['modified_at'] = $modified;
 		return $this;
 	}
 
-    /**
-     * Has session exists
+	/**
+	 * Has session exists
 	 * @return bool
-     */
-    public function hasSession()
-    {
+	 */
+	public function hasSession()
+	{
 		$seconds = time()-$this->session['modified_at'];
-        return !is_null($this->session['id']) && $seconds < self::SESS_LIFETIME;
+		return !is_null($this->session['id']) && $seconds < self::SESS_LIFETIME;
 	}
 
 	/**
-     * Set account instance
+	 * Set account instance
 	 * @param array $data
 	 * @return Amoapi
-     */
-    public static function setInstance(Array $data)
-    {
-        if (empty($data)) {
-            throw new \Exception('Incorrect amoCRM account data');
+	 */
+	public static function setInstance(Array $data)
+	{
+		if (empty($data)) {
+			throw new \Exception('Incorrect amoCRM account data');
 		}
 		if (empty($data['zone'])) {
 			$data['zone'] = 'ru';
@@ -193,22 +146,22 @@ class Amoapi
 			}
 			$account[$key] = $data[$key];
 		}
-        if (!isset(self::$_instances[$account['id']])) {
+		if (!isset(self::$_instances[$account['id']])) {
 			self::$_instances[$account['id']] = new static($account);
 		}
 		$instance = self::getInstance($account['id']);
 		self::$_queries[$account['id']] = new Collections\QueryCollection();
 		self::$_queries[$account['id']]->boot($instance);
-        return $instance;
+		return $instance;
 	}
 
-    /**
-     * Get account instance
+	/**
+	 * Get account instance
 	 * @param integer $account_id
 	 * @return Amoapi
-     */
-    public static function getInstance($account_id)
-    {
+	 */
+	public static function getInstance($account_id)
+	{
 		if (!is_numeric($account_id)) {
 			throw new \Exception('Account id must be numeric: '.$account_id);
 		}
@@ -218,11 +171,11 @@ class Amoapi
 		return self::$_instances[$account_id];
 	}
 	
-    /**
-     * Call Service Methods
+	/**
+	 * Call Service Methods
 	 * @param string $service_name
 	 * @param array $args
-     */
+	 */
 	public function __call($service_name, $args)
 	{
 		if (!in_array($service_name, $this->services)) {
@@ -235,10 +188,10 @@ class Amoapi
 		return $service;
 	}
 	
-    /**
-     * Get Service
+	/**
+	 * Get Service
 	 * @param string $target
-     */
+	 */
 	public function __get($target)
 	{
 		if ($target === 'queries') {

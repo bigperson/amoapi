@@ -1,5 +1,6 @@
 ## AmoCRM API Client
-Api клиент для работы с amoCRM
+Api клиент для работы с amoCRM  
+Поддержка oAuth авторизации начиная с версии 0.9.0.0
 
 ## Установка
 
@@ -14,8 +15,159 @@ composer require ufee/amoapi
 composer require --dev phpunit/phpunit ^5
 vendor/bin/phpunit vendor/ufee/amoapi
 ```
+## Инициализация клиента по oAuth
+Хранение oauth токена возможно в нескольких вариантах
+#### Файловое хранилище
+Используется по умолчанию (/vendor/ufee/amoapi/src/Cache/), можно задать свой путь  
+Создается поддиректория: {path}/{domain}/{client_id}.json  
+Настоятельно рекомендуется использовать cвой путь для кеширования, в противном случае данные будут УДАЛЕНЫ composer'ом при обновлении на новую версию.
+```php
+\Ufee\Amo\Oauthapi::setOauthStorage(
+	new \Ufee\Amo\Base\Storage\Oauth\FileStorage(['path' => '/full/oauth/path'])
+);
+```
+#### Redis
+Поддерживается библиотека [phpredis](https://github.com/phpredis/phpredis)   
+Формат ключа: {domain}_{client_id}
+```php
+$redis = new \Redis();
+$redis->connect('/var/run/redis/redis.sock');
+$redis->setOption(\Redis::OPT_SERIALIZER, \Redis::SERIALIZER_PHP);
+$redis->select(5); // switch to specific db
 
-## Работа с клиентом
+\Ufee\Amo\Oauthapi::setOauthStorage(
+	new \Ufee\Amo\Base\Storage\Oauth\RedisStorage(['connection' => $redis])
+);
+```
+#### MongoDB
+Поддерживается библиотека [mongodb](https://github.com/mongodb/mongo-php-library)   
+```php
+$mongo = new \MongoDB\Client('mongodb://host');
+$collection = $mongo->selectCollection('database', 'some_collection');
+
+\Ufee\Amo\Oauthapi::setOauthStorage(
+	new \Ufee\Amo\Base\Storage\Oauth\MongoDbStorage(['collection' => $collection])
+);
+```
+#### Наследование хранилища
+Реализуется класс, наследующий \Ufee\Amo\Base\Storage\Oauth\AbstractStorage
+```php
+class CustomOauthStorage extends \Ufee\Amo\Base\Storage\Oauth\AbstractStorage
+{
+	protected function initClient(Oauthapi $client) {
+		parent::initClient($client);
+		$key = $client->getAuth('domain').'_'.$client->getAuth('client_id');
+		if ($data = getClientOauthData($key)) {
+			static::$_oauth[$key] = $data;
+		}
+	}
+	public function setOauthData(Oauthapi $client, array $oauth) {
+		parent::setOauthData($client, $oauth);
+		$key = $client->getAuth('domain').'_'.$client->getAuth('client_id');
+		return setClientOauthData($key, $oauth);
+	}
+}
+\Ufee\Amo\Oauthapi::setOauthStorage(
+	new CustomOauthStorage()
+);
+```
+#### Стороннее хранение
+Кеширование oauth данных библиотекой не производится
+```php
+\Ufee\Amo\Oauthapi::setOauthStorage(
+	new \Ufee\Amo\Base\Storage\Oauth\AbstractStorage()
+);
+$amo = \Ufee\Amo\Oauthapi::setInstance([...]);
+$first_token = $amo->fetchAccessToken($code);
+saveToCustomStorage($first_token);
+$last_saved_token = getFromCustomStorage();
+$amo->setOauth($last_saved_token);
+$amo->onAccessTokenRefresh(function($oauth) {
+	saveToCustomStorage($oauth);
+});
+```
+#### Deprecated
+Задать свой путь для кеширования oauth данных (устаревший метод)
+```php
+$amo->setOauthPath('path_to/oauth');
+// equal to new method
+\Ufee\Amo\Oauthapi::setOauthStorage(
+    new \Ufee\Amo\Base\Storage\Oauth\FileStorage(['path' => 'path_to/oauth'])
+);
+```
+#### Получение объекта для работы с конкретным аккаунтом
+```php
+$amo = \Ufee\Amo\Oauthapi::setInstance([
+    'domain' => 'testdomain',
+    'client_id' => 'b6cf0658-b19...', // id приложения
+    'client_secret' => 'D546t4yRlOprfZ...',
+    'redirect_uri' => 'https://site.ru/amocrm/oauth/redirect',
+    'zone' => 'ru', // or com
+    'timezone' => 'Europe/Moscow',
+    'lang' => 'ru' // or en
+]);
+```
+Получение ранее инициализированного объекта по id приложения
+```php
+$amo = \Ufee\Amo\Oauthapi::getInstance('b6cf0658-b19...');
+```
+Получение URL авторизации в приложении amoCRM  
+Необходимо для извлечения кода авторизации
+```php
+$first_auth_url = $amo->getOauthUrl($arg = ['mode' => 'popup', 'state' => 'amoapi']);
+```
+Получение oauth данных - access_token, refresh_token производится единоразово, по коду авторизации  
+Полученные данные oauth кешируются в соответствии с выбранным хранилищем  
+Применяются при API запросах автоматически  
+```php
+$oauth = $amo->fetchAccessToken($code);
+```
+При необходимости можно задать oauth данные принудительно, вручную  
+Данные также будут кешированы автоматически в соответствии с выбранным хранилищем 
+```php
+$amo->setOauth([
+	'token_type' => 'Bearer',
+	'expires_in' => 86400,
+	'access_token' => 'bKSuyc4u6oi...',
+	'refresh_token' => 'a89iHvS9uR4...',
+	'created_at' => 1597678161
+]);
+```
+Токен доступа обновляется автоматически, если срок действия refresh_token не истек  
+При необходимости можно обновить oauth данные по refresh_token принудительно, вручную  
+Новые oauth данные также будут кешированы автоматически
+```php
+$oauth = $amo->refreshAccessToken($refresh_token = null); // при передаче null используются кешированные oauth данные
+```
+Вызов callback функции при автоматическом обновлении токена доступа
+```php
+$amo->onAccessTokenRefresh(function($oauth) {
+	print_r($oauth); // ['token_type' => 'Bearer','expires_in' => 86400, ...]
+});
+```
+После первичного выполнения метода fetchAccessToken(), можно пользоваться клиентом в обычном режиме  
+Повторное выполнение метода fetchAccessToken() или setOauth() необходимо только в случаях, если:
+1) Изменились ключи доступа в приложении
+2) Изменился поддомен amoCRM аккаунта
+3) Истек срок действия refresh_token
+4) Получена ошибка авторизации
+
+Рекомендуется убедиться в отсутствии публичного доступа к папке с кешем - /vendor/ufee/amoapi/src/Cache/  
+(если используется директория по умолчанию)
+
+Обмен API ключа на код авторизации oAuth
+```php
+$resp_code = $amo->ajax()->exchangeApiKey(
+	$crm_login, 
+	$api_hash, 
+	$client_id, 
+	$client_secret
+);
+if ($resp_code === 202) {
+	// Запрос принят, код авторизации будет отправлен на redirect_uri
+}
+```
+## Инициализация клиента по API-hash
 Получение объекта для работы с конкретным аккаунтом
 ```php
 $amo = \Ufee\Amo\Amoapi::setInstance([
@@ -28,10 +180,13 @@ $amo = \Ufee\Amo\Amoapi::setInstance([
     'lang' => 'en' // default: ru
 ]);
 ```
-Включение/выключение автоматической авторизации при ошибке 401
+Включение/выключение автоматической авторизации при ошибке 401  
+Сессия (cookie) кешируется в файлах
 ```php
 $amo->autoAuth(true); // true/false, рекомендуется true
 ```
+
+## Работа с клиентом
 Включение логирования заросов (Logs/m-Y/domain.log)
 ```php
 $amo->queries->logs(true); // to default path
@@ -44,21 +199,26 @@ $amo->queries->logs('path_to_log/queries'); // to custom path
 ```php
 $amo->queries->setDelay(0.5); // default: 1 sec
 ```
-Зарпос /api/v2/account кешируется в файлах, время указывается в секундах
+Запрос /api/v2/account кешируется в файлах, время указывается в секундах
 ```php
 \Ufee\Amo\Services\Account::setCacheTime(1800); // default: 600 sec
 ```
 Свой путь для кеширования запросов
 ```php
-$amo->queries->cachePath('path_to/cache');
+\Ufee\Amo\Collections\QueryCollection::setCachePath('path_to/cache');
 ```
-Пользовательская отладка запросов 
+Пользовательская отладка запросов (обновлено с вводом oAuth)
 ```php
-$amo->queries->listen(function(\Ufee\Amo\Api\Query $query) {
+$amo->queries->listen(function(\Ufee\Amo\Base\Models\QueryModel $query) {
+    $code = $query->response->getCode();
     echo $query->startDate().' - ['.$query->method.'] '.$query->getUrl()."\n";
     print_r($query->headers);
-    print_r(count($query->json_data) ? $query->json_data : $query->post_data);
-    echo $query->endDate().' - ['.$query->response->getCode().'] '.$query->response->getData()."\n\n";
+    if ($code === 0) {
+        echo $query->response->getError()."\n\n";
+    } else {
+        print_r(count($query->json_data) ? $query->json_data : $query->post_data);
+        echo $query->endDate().' - ['.$query->response->getCode().'] '.$query->response->getData()."\n\n";
+    }
 });
 ```
 ## Поиск сущностей
@@ -604,11 +764,12 @@ $result = $amo->webhooks()->unsubscribe('http://site.ru/handler/', ['update_cont
 ## Работа с frontend методами
 Скачивание файла из примечания
 ```php
-$contents = $amo->ajax()->getAattachment('AbCd_attach_name.zip');
+$contents = $amo->ajax()->getAttachment('AbCd_attach_name.zip');
 ```
 Выполнение произвольных запросов
 ```php
 $amo->ajax()->get($url = '/ajax/example', $args = []);
-$amo->ajax()->post($url = '/ajax/example', $data = [], $args = []);
+$amo->ajax()->post($url = '/ajax/example', $data = [], $args = [], $post_type = 'raw OR json');
+$amo->ajax()->postJson($url = '/ajax/example', $data = [], $args = []);
 $amo->ajax()->patch($url = '/ajax/example', $data = [], $args = []);
 ```

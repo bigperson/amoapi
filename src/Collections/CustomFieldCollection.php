@@ -22,9 +22,12 @@ class CustomFieldCollection extends CollectionWrapper
         13 => 'Ufee\Amo\Base\Models\CustomField\SmartAddressField',
         14 => 'Ufee\Amo\Base\Models\CustomField\BirthDayField',
         15 => 'Ufee\Amo\Base\Models\CustomField\JurField',
+		16 => 'Ufee\Amo\Base\Models\CustomField\ItemsField',
         17 => 'Ufee\Amo\Base\Models\CustomField\OrgField',
         18 => 'Ufee\Amo\Base\Models\CustomField\CategoryField',
-        19 => 'Ufee\Amo\Base\Models\CustomField\CalendarField'
+        19 => 'Ufee\Amo\Base\Models\CustomField\CalendarField',
+		20 => 'Ufee\Amo\Base\Models\CustomField\NumericField',
+		21 => 'Ufee\Amo\Base\Models\CustomField\TextField'
 	];
 	
     /**
@@ -35,7 +38,9 @@ class CustomFieldCollection extends CollectionWrapper
     public function __construct(Array $elements = [], \Ufee\Amo\Models\Account &$account)
     {
 		$this->collection = new \Ufee\Amo\Base\Collections\Collection($elements);
-		$this->collection->each(function(&$item) {
+		$client_id = $account->service->instance->getAuth('id');
+		$this->collection->each(function(&$item) use(&$client_id) {
+			$item->client_id = $client_id;
 			$item = new CustomField($item);
 		});
 		$this->attributes['account'] = $account;
@@ -49,7 +54,7 @@ class CustomFieldCollection extends CollectionWrapper
     public function getClassFrom(CustomField $cfield)
     {
         if (!array_key_exists($cfield->field_type, self::FIELD_CLASSES)) {
-            throw new \Exception('Unregistered custom field class for type: '.$cfield->field_type);
+            return 'Ufee\Amo\Base\Models\CustomField\EntityField';
         }
         return self::FIELD_CLASSES[$cfield->field_type];
     }

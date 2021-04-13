@@ -3,7 +3,6 @@
  * amoCRM API client GET list limited service method
  */
 namespace Ufee\Amo\Base\Methods;
-use Ufee\Amo\Http;
 
 class LimitedList extends \Ufee\Amo\Base\Methods\Get
 {
@@ -21,11 +20,14 @@ class LimitedList extends \Ufee\Amo\Base\Methods\Get
 			$result = $this->call(
 				array_merge($arg, ['limit_rows' => $this->service->limit_rows, 'limit_offset' => $limit_offset])
 			);
-			$collection->merge($result);
+			$result->each(function(&$item) use(&$collection) {
+				$collection->push($item);
+			});
 			$limit_offset+= $this->service->limit_rows;
 		} while (
 			$result->count() == $this->service->limit_rows && ($this->service->max_rows === 0 || ($collection->count()+$this->service->limit_rows) <= $this->service->max_rows)
 		);
+		$result = null;
 		return $collection;
 	}
 }

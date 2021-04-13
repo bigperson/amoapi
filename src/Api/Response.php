@@ -3,24 +3,32 @@
  * Curl response
  */
 namespace Ufee\Amo\Api;
+use \Ufee\Amo\Base\Models\QueryModel;
 
 class Response
 {
 	private
 		$query,
 		$data,
-		$code;
+		$code,
+		$info,
+		$error;
 		
     /**
      * Constructor
 	 * @param string $data
 	 * @param Query $query
      */
-    public function __construct($data, Query &$query)
+    public function __construct($data, QueryModel &$query)
     {
 		$this->query = $query;
 		$this->data = $data;
-		$this->code = curl_getinfo($query->curl, CURLINFO_HTTP_CODE);
+		$this->info = (object)curl_getinfo($query->curl);
+		$this->code = $this->info->http_code;
+		
+		if ($this->code === 0) {
+			$this->error = curl_error($query->curl);
+		}
     }
 	
     /**
@@ -49,5 +57,23 @@ class Response
 	public function getCode()
 	{
 		return $this->code;
+	}
+	
+    /**
+     * Get response info
+	 * @return object
+     */
+	public function getInfo()
+	{
+		return $this->info;
+	}
+	
+    /**
+     * Get response error
+	 * @return string|null
+     */
+	public function getError()
+	{
+		return $this->error;
 	}
 }

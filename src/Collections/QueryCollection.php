@@ -3,15 +3,21 @@
  * amoCRM API Query Collection class
  */
 namespace Ufee\Amo\Collections;
-use Ufee\Amo\Amoapi,
-    Ufee\Amo\Api;
+use Ufee\Amo\ApiClient,
+    Ufee\Amo\Api,
+	Ufee\Amo\Base\Models\QueryModel;
 
+if (!defined('AMOAPI_ROOT')) {
+	define('AMOAPI_ROOT', substr(dirname(__FILE__), 0, -12));
+}
 class QueryCollection extends \Ufee\Amo\Base\Collections\Collection
 {
+	protected static $_cache_path = AMOAPI_ROOT.'/Cache';
     protected 
         $instance,
+		$instanceName,
+		$cache_path,
         $delay = 1,
-        $cache_path = '/Cache',
         $cookie_file,
         $_listener,
         $logger = null,
@@ -19,15 +25,19 @@ class QueryCollection extends \Ufee\Amo\Base\Collections\Collection
     
     /**
      * Boot instance
-	 * @param Amoapi $instance
+	 * @param ApiClient $instance
      */
-    public function boot(Amoapi &$instance)
+    public function boot(ApiClient &$instance)
     {
         $this->instance = $instance;
+		$this->instanceName = substr(strrchr(get_class($instance), "\\"), 1);
         $this->logger = Api\Logger::getInstance($instance->getAuth('domain').'.log');
-        $this->cachePath(AMOAPI_ROOT.$this->cache_path);
-        $this->cookie_file = AMOAPI_ROOT.DIRECTORY_SEPARATOR.'Cookies'.DIRECTORY_SEPARATOR.$instance->getAuth('domain').'.cookie';
-        $this->refreshSession();
+        $this->cachePath(self::$_cache_path);
+		
+		if ($instance instanceof Amoapi) {
+			$this->cookie_file = AMOAPI_ROOT.DIRECTORY_SEPARATOR.'Cookies'.DIRECTORY_SEPARATOR.$instance->getAuth('domain').'.cookie';
+			$this->refreshSession();
+		}
     }
 
     /**
@@ -79,13 +89,18 @@ class QueryCollection extends \Ufee\Amo\Base\Collections\Collection
      */
     public function cachePath($val)
     {
+		$instanceClass = get_class($this->instance);
         $this->cache_path = $val.'/'.$this->instance->getAuth('domain');
+		
         if (!file_exists($this->cache_path)) {
             mkdir($this->cache_path, 0777, true);
         }
-        if ($caches = glob($this->cache_path.'/*.cache')) {
+        if ($caches = glob($this->cache_path.'/*.'.$this->instanceName.'.cache')) {
             foreach ($caches as $cache_file) {
                 if ($cacheQuery = unserialize(file_get_contents($cache_file))) {
+					if (!$instanceClass::hasInstance($cacheQuery->account_id)) {
+						continue;
+					}
                     $service = $cacheQuery->getService();
                     if ($service::canCache() && microtime(1)-$cacheQuery->end_time <= $service::cacheTime()) {
                         array_push($this->items, $cacheQuery);
@@ -100,11 +115,11 @@ class QueryCollection extends \Ufee\Amo\Base\Collections\Collection
     
     /**
      * Push new queries
-	 * @param Query $query
+	 * @param QueryModel $query
      * @param bool $save
 	 * @return QueryCollection
      */
-    public function pushQuery(Api\Query $query, $save = true)
+    public function pushQuery(QueryModel $query, $save = true)
     {
         if ($this->_logs) {
             $this->logger->log(
@@ -112,7 +127,7 @@ class QueryCollection extends \Ufee\Amo\Base\Collections\Collection
                 $query->headers,
                 count($query->json_data) ? $query->json_data : $query->post_data,
                 'Start: '.$query->startDate('H:i:s').' ('.$query->start_time.')',
-                'End:   '.$query->endDate('H:i:s').' ('.$query->end_time.')',
+                'End:   '.$query->endDate('H:i:s').' ('.$query->end_time.'), retries: '.$query->getRetries(),
                 'Execution time: '.$query->execution_time.' (sleep: '.(float)$query->sleep_time.')',
                 'Memory used: '.$query->memory_usage.' mb',
                 'Response code: '.$query->response->getCode(),
@@ -135,11 +150,11 @@ class QueryCollection extends \Ufee\Amo\Base\Collections\Collection
     /**
      * Get cached query
 	 * @param string $hash
-	 * @return Query|null
+	 * @return QueryModel|null
      */
 	public function getCached($hash)
 	{    
-        $queries = $this->find('hash', $hash)->filter(function(Api\Query $query) {
+        $queries = $this->find('hash', $hash)->filter(function(QueryModel $query) {
             return $query->getService()->canCache() && microtime(1)-$query->end_time <= $query->getService()->cacheTime();
         });
         return $queries->first();
@@ -181,18 +196,28 @@ class QueryCollection extends \Ufee\Amo\Base\Collections\Collection
      */
     public function flush()
     {
-        array_map('unlink', glob($this->cache_path.'/*.cache'));
+        array_map('unlink', glob($this->cache_path.'/*.'.$this->instanceName.'.cache'));
         $this->items = [];
         return $this;
     }
     
     /**
      * Cache queries
-	 * @param Query $query
+	 * @param QueryModel $query
 	 * @return bool
      */
-    public function cacheQuery(Api\Query $query)
+    public function cacheQuery(QueryModel $query)
     {
-        return file_put_contents($this->cache_path.'/'.$query->hash.'.cache', serialize($query));
+        return file_put_contents($this->cache_path.'/'.$query->hash.'.'.$this->instanceName.'.cache', serialize($query));
     }
+	
+    /**
+     * Set cache path
+	 * @param string $val
+     * @return QueryCollection
+     */
+    public static function setCachePath($val)
+    {
+		self::$_cache_path = $val;
+	}
 }

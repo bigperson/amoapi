@@ -15,6 +15,37 @@ class Ajax extends \Ufee\Amo\Base\Services\Service
 	{
 		
 	}
+	
+    /**
+     * Exchange api key to oauth
+	 * @param integer $bot_id
+	 * @param integer $entity_id
+	 * @param integer $entity_type - 1 – контакт, 2- сделка, 3 – компания
+	 * @param bool $state
+	 * return integer
+     */
+	public function exchangeApiKey($login, $api_key, $client_id, $client_secret)
+	{
+		if ($this->instance instanceOf \Ufee\Amo\Oauthapi) {
+			$query = new Api\Oauth\Query($this->instance);
+		} else {
+			if (!$this->instance->hasSession() && !$this->instance->hasAutoAuth()) {
+				$this->instance->authorize();
+			}
+			$query = new Api\Query($this->instance);
+		}
+		$req = [
+			'login' => $login,
+			'api_key' => $api_key,
+			'client_uuid' => $client_id,
+			'client_secret' => $client_secret
+		];
+		$query->setUrl('/oauth2/exchange_api_key')
+			  ->setMethod('POST')
+			  ->setJsonData($req)
+			  ->execute();
+		return $query->response->getCode();
+	}
 
     /**
      * Set Note pinned
@@ -26,15 +57,19 @@ class Ajax extends \Ufee\Amo\Base\Services\Service
      */
 	public function runSalesbot($bot_id, $entity_id, $entity_type)
 	{
-		if (!$this->instance->hasSession() && !$this->instance->hasAutoAuth()) {
-			$this->instance->authorize();
+		if ($this->instance instanceOf \Ufee\Amo\Oauthapi) {
+			$query = new Api\Oauth\Query($this->instance);
+		} else {
+			if (!$this->instance->hasSession() && !$this->instance->hasAutoAuth()) {
+				$this->instance->authorize();
+			}
+			$query = new Api\Query($this->instance);
 		}
 		$bot = [
 			'bot_id' => $bot_id,
 			'entity_id' => $entity_id,
 			'entity_type' => $entity_type
 		];
-		$query = new Api\Query($this->instance);
 		$query->setUrl('/api/v2/salesbot/run')
 			  ->setMethod('POST')
 			  ->setPostData([$bot])
@@ -53,7 +88,7 @@ class Ajax extends \Ufee\Amo\Base\Services\Service
      */
 	public function setNotePinned($note_id, $state = true)
 	{
-		if (!$this->instance->hasSession() && !$this->instance->hasAutoAuth()) {
+		if ($this->instance instanceOf \Ufee\Amo\Amoapi && !$this->instance->hasSession() && !$this->instance->hasAutoAuth()) {
 			$this->instance->authorize();
 		}
 		$result = $this->patch('/v3/notes/'.$note_id, [
@@ -70,12 +105,16 @@ class Ajax extends \Ufee\Amo\Base\Services\Service
 	 * @param string $attachment filename
 	 * return string
      */
-	public function getAattachment($attachment)
+	public function getAttachment($attachment)
 	{
-		if (!$this->instance->hasSession() && !$this->instance->hasAutoAuth()) {
-			$this->instance->authorize();
+		if ($this->instance instanceOf \Ufee\Amo\Oauthapi) {
+			$query = new Api\Oauth\Query($this->instance);
+		} else {
+			if (!$this->instance->hasSession() && !$this->instance->hasAutoAuth()) {
+				$this->instance->authorize();
+			}
+			$query = new Api\Query($this->instance);
 		}
-		$query = new Api\Query($this->instance);
 		$query->setUrl('/download/'.$attachment)
 			  ->resetArgs()
 			  ->execute();
@@ -96,7 +135,11 @@ class Ajax extends \Ufee\Amo\Base\Services\Service
      */
 	public function get($url, array $args = [])
 	{
-		$query = new Api\Query($this->instance);
+		if ($this->instance instanceOf \Ufee\Amo\Oauthapi) {
+			$query = new Api\Oauth\Query($this->instance);
+		} else {
+			$query = new Api\Query($this->instance);
+		}
 		$query->setHeader('X-Requested-With', 'XMLHttpRequest')
 			  ->setUrl($url)
 			  ->setArgs($args)
@@ -115,17 +158,26 @@ class Ajax extends \Ufee\Amo\Base\Services\Service
 	 * @param string $url
 	 * @param array $data
 	 * @param array $args
+	 * @param string $post_type - raw|json
 	 * return mixed
      */
-	public function post($url, array $data = [], array $args = [])
+	public function post($url, array $data = [], array $args = [], $post_type = 'raw')
 	{
-		$query = new Api\Query($this->instance);
+		if ($this->instance instanceOf \Ufee\Amo\Oauthapi) {
+			$query = new Api\Oauth\Query($this->instance);
+		} else {
+			$query = new Api\Query($this->instance);
+		}
 		$query->setHeader('X-Requested-With', 'XMLHttpRequest')
 			  ->setUrl($url)
 			  ->setMethod('POST')
-			  ->setPostData($data)
-			  ->setArgs($args)
-			  ->execute();
+			  ->setArgs($args);
+		if ($post_type == 'json') {
+			$query->setJsonData($data);
+		} else {
+			$query->setPostData($data);
+		}
+		$query->execute();
 		if ($query->response->getCode() != 200) {
 			throw new \Exception('Invalid response code: '.$query->response->getCode(), $query->response->getCode());
 		}
@@ -133,6 +185,18 @@ class Ajax extends \Ufee\Amo\Base\Services\Service
 			return $data;
 		}
 		return $query->response->getData();
+	}
+	
+    /**
+     * Ajax POST json request
+	 * @param string $url
+	 * @param array $data
+	 * @param array $args
+	 * return mixed
+     */
+	public function postJson($url, array $data = [], array $args = [])
+	{
+		return $this->post($url, $data, $args, 'json');
 	}
 
     /**
@@ -144,7 +208,11 @@ class Ajax extends \Ufee\Amo\Base\Services\Service
      */
 	public function patch($url, array $data = [], array $args = [])
 	{
-		$query = new Api\Query($this->instance);
+		if ($this->instance instanceOf \Ufee\Amo\Oauthapi) {
+			$query = new Api\Oauth\Query($this->instance);
+		} else {
+			$query = new Api\Query($this->instance);
+		}
 		$query->setUrl($url)
 			  ->setMethod('PATCH')
 			  ->setJsonData($data)
